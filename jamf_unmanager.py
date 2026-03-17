@@ -105,40 +105,52 @@ class JamfSearchUnmanager(ctk.CTk):
         except Exception as e: self.log(f"❌ Connection Error: {str(e)}")
 
     def load_search(self):
-        search_name = self.search_entry.get().strip()
-        if not search_name or not self.token: 
-            self.log("❌ Error: Not logged in or no search name.")
-            return
-        headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
-        try:
-            encoded_name = requests.utils.quote(search_name)
-            self.target_ids = []
-            c_count = 0
-            m_count = 0
+            search_name = self.search_entry.get().strip()
+            if not search_name or not self.token: 
+                self.log("❌ Error: Not logged in or no search name.")
+                return
+            headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
+            try:
+                encoded_name = requests.utils.quote(search_name)
+                self.target_ids = []
+                c_count = 0
+                m_count = 0
             
-            # Check Computers
-            res_c = requests.get(f"{self.base_url}/JSSResource/advancedcomputersearches/name/{encoded_name}", headers=headers)
-            if res_c.status_code == 200:
-                comps = res_c.json().get('advanced_computer_search', {}).get('computers', [])
-                for c in comps:
-                    self.target_ids.append({'id': c['id'], 'name': c.get('name'), 'type': 'computer'})
-                    c_count += 1
+                # Check Computers
+                res_c = requests.get(f"{self.base_url}/JSSResource/advancedcomputersearches/name/{encoded_name}", headers=headers)
+                if res_c.status_code == 200:
+                    comps = res_c.json().get('advanced_computer_search', {}).get('computers', [])
+                    for c in comps:
+                        self.target_ids.append({'id': c['id'], 'name': c.get('name'), 'type': 'computer'})
+                        c_count += 1
 
-            # Check Mobile
-            res_m = requests.get(f"{self.base_url}/JSSResource/advancedmobiledevicesearches/name/{encoded_name}", headers=headers)
-            if res_m.status_code == 200:
-                mobs = res_m.json().get('advanced_mobile_device_search', {}).get('mobile_devices', [])
-                for m in mobs:
-                    self.target_ids.append({'id': m['id'], 'name': m.get('name'), 'type': 'mobile'})
-                    m_count += 1
+                # Check Mobile
+                res_m = requests.get(f"{self.base_url}/JSSResource/advancedmobiledevicesearches/name/{encoded_name}", headers=headers)
+                if res_m.status_code == 200:
+                    mobs = res_m.json().get('advanced_mobile_device_search', {}).get('mobile_devices', [])
+                    for m in mobs:
+                        self.target_ids.append({'id': m['id'], 'name': m.get('name'), 'type': 'mobile'})
+                        m_count += 1
 
-            total = len(self.target_ids)
-            self.count_label.configure(text=f"Found: {total} ({c_count} Computer / {m_count} Mobile)", text_color="#2ECC71")
-            self.dry_run_btn.configure(state="normal" if total > 0 else "disabled")
-            self.unmanage_button.configure(state="normal" if total > 0 else "disabled")
-            self.remove_mdm_button.configure(state="normal" if total > 0 else "disabled")
-            self.log(f"✅ Loaded search: {total} devices found.")
-        except Exception as e: self.log(f"❌ Error: {str(e)}")
+                total = len(self.target_ids)
+                self.count_label.configure(text=f"Found: {total} ({c_count} Computer / {m_count} Mobile)", text_color="#2ECC71")
+            
+                # --- Logic for Button States ---
+                has_mixed_types = (c_count > 0 and m_count > 0)
+            
+                self.dry_run_btn.configure(state="normal" if total > 0 else "disabled")
+                self.unmanage_button.configure(state="normal" if total > 0 else "disabled")
+            
+                if has_mixed_types:
+                    self.remove_mdm_button.configure(state="disabled", text="MIXED TYPES - REMOVAL BLOCKED")
+                    self.log("⚠️ Removal blocked: Search contains both Computers and Mobile devices.")
+                elif total > 0 and c_count > 0:
+                    self.remove_mdm_button.configure(state="normal", text="REMOVE MDM PROFILE")
+                else:
+                    self.remove_mdm_button.configure(state="disabled", text="REMOVE MDM PROFILE")
+
+                self.log(f"✅ Loaded search: {total} devices found.")
+            except Exception as e: self.log(f"❌ Error: {str(e)}")
 
     def dry_run(self):
         path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile=f"DryRun_{int(time.time())}.txt")
