@@ -3,7 +3,7 @@ import requests
 import time
 import json
 import os
-import threading # Added for background tasks
+import threading
 from tkinter import filedialog, messagebox
 
 CONFIG_FILE = os.path.expanduser("~/.jamf_config.json")
@@ -12,7 +12,7 @@ class JamfSearchUnmanager(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Jamf Pro: Offboard Utility")
-        self.geometry("600x550")
+        self.geometry("600x650") # Slightly taller to fit new buttons
         
         self.base_url = ""
         self.token = ""
@@ -23,10 +23,11 @@ class JamfSearchUnmanager(ctk.CTk):
 
     def setup_ui(self):
         self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
         
         # --- Login ---
         self.login_frame = ctk.CTkFrame(self)
-        self.login_frame.grid(row=0, column=0, padx=20, pady=10, sticky="ew")
+        self.login_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
         self.url_entry = ctk.CTkEntry(self.login_frame, placeholder_text="https://jamf.url.com")
         self.url_entry.pack(side="top", padx=10, pady=(10, 5), fill="x")
         
@@ -42,32 +43,35 @@ class JamfSearchUnmanager(ctk.CTk):
 
         # --- Search Input ---
         self.search_frame = ctk.CTkFrame(self)
-        self.search_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        self.search_frame.grid(row=1, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
         self.search_entry = ctk.CTkEntry(self.search_frame, placeholder_text="Advanced Search Name")
         self.search_entry.pack(side="left", padx=10, pady=10, fill="x", expand=True)
         self.fetch_btn = ctk.CTkButton(self.search_frame, text="Load Search", command=self.load_search)
         self.fetch_btn.pack(side="left", padx=10, pady=10)
 
         self.count_label = ctk.CTkLabel(self, text="Devices found: --", font=("Arial", 14, "bold"))
-        self.count_label.grid(row=2, column=0, pady=5)
+        self.count_label.grid(row=2, column=0, columnspan=2, pady=5)
 
         # --- Actions ---
-        self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.btn_frame.grid(row=3, column=0, pady=10)
-        self.dry_run_btn = ctk.CTkButton(self.btn_frame, text="Dry Run (Export)", state="disabled", command=self.dry_run)
-        self.dry_run_btn.pack(side="left", padx=10)
-        self.run_btn = ctk.CTkButton(self.btn_frame, text="UNMANAGE ALL", state="disabled", fg_color="#990000", hover_color="#660000", command=self.run_unmanage)
-        self.run_btn.pack(side="left", padx=10)
+        self.dry_run_btn = ctk.CTkButton(self, text="Dry Run (Export)", state="disabled", command=self.dry_run)
+        self.dry_run_btn.grid(row=3, column=0, columnspan=2, pady=10)
+
+        # Unmanage Button (Blue)
+        self.unmanage_button = ctk.CTkButton(self, text="UNMANAGE ALL", command=self.start_unmanage, state="disabled")
+        self.unmanage_button.grid(row=4, column=0, padx=10, pady=10, sticky="ew")
+
+        # Remove MDM Button (Red)
+        self.remove_mdm_button = ctk.CTkButton(self, text="REMOVE MDM PROFILE", fg_color="red", hover_color="darkred", command=self.start_removal, state="disabled")
+        self.remove_mdm_button.grid(row=4, column=1, padx=10, pady=10, sticky="ew")
 
         self.progress = ctk.CTkProgressBar(self)
-        self.progress.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
+        self.progress.grid(row=5, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
         self.progress.set(0)
 
         self.log_box = ctk.CTkTextbox(self, height=150)
-        self.log_box.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
+        self.log_box.grid(row=6, column=0, columnspan=2, padx=20, pady=10, sticky="nsew")
 
     def log(self, message):
-        # Threads can safely call this to update the UI
         self.log_box.insert("end", f"[{time.strftime('%H:%M:%S')}] {message}\n")
         self.log_box.see("end")
 
@@ -84,143 +88,167 @@ class JamfSearchUnmanager(ctk.CTk):
             json.dump({"url": url}, f)
 
     def login(self):
-            # Capture the URL immediately and ensure it's stored in the class
-            self.base_url = self.url_entry.get().strip().rstrip('/')
+        self.base_url = self.url_entry.get().strip().rstrip('/')
+        self.user = self.user_entry.get()
+        self.pwd = self.pass_entry.get()
         
-            if not self.base_url or not self.base_url.startswith("http"):
-                self.log("❌ Error: Please enter a valid URL (starting with https://)")
-                return
-
-            self.save_url(self.base_url)
-        
-            try:
-                res = requests.post(f"{self.base_url}/api/v1/auth/token", auth=(self.user_entry.get(), self.pass_entry.get()))
-                if res.status_code == 200:
-                    self.token = res.json()['token']
-                    self.log("✅ Logged in successfully.")
-                else: 
-                    self.log(f"❌ Login Error: {res.status_code}")
-            except Exception as e: 
-                self.log(f"❌ Connection Error: {str(e)}")
+        if not self.base_url or not self.base_url.startswith("http"):
+            self.log("❌ Error: Invalid URL")
+            return
+        self.save_url(self.base_url)
+        try:
+            res = requests.post(f"{self.base_url}/api/v1/auth/token", auth=(self.user_entry.get(), self.pass_entry.get()))
+            if res.status_code == 200:
+                self.token = res.json()['token']
+                self.log("✅ Logged in successfully.")
+            else: self.log(f"❌ Login Error: {res.status_code}")
+        except Exception as e: self.log(f"❌ Connection Error: {str(e)}")
 
     def load_search(self):
-            search_name = self.search_entry.get().strip()
-            if not search_name: return
-            headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
-        
-            try:
-                encoded_name = requests.utils.quote(search_name)
-                self.target_ids = []
-                c_count = 0
-                m_count = 0
+        search_name = self.search_entry.get().strip()
+        if not search_name or not self.token: 
+            self.log("❌ Error: Not logged in or no search name.")
+            return
+        headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
+        try:
+            encoded_name = requests.utils.quote(search_name)
+            self.target_ids = []
+            c_count = 0
+            m_count = 0
             
-                # 1. Check for Computer Search (macOS)
-                url_comp = f"{self.base_url}/JSSResource/advancedcomputersearches/name/{encoded_name}"
-                res_c = requests.get(url_comp, headers=headers)
-                if res_c.status_code == 200:
-                    comps = res_c.json().get('advanced_computer_search', {}).get('computers', [])
-                    for c in comps:
-                        self.target_ids.append({'id': c['id'], 'name': c.get('name'), 'type': 'computer'})
-                        c_count += 1
+            # Check Computers
+            res_c = requests.get(f"{self.base_url}/JSSResource/advancedcomputersearches/name/{encoded_name}", headers=headers)
+            if res_c.status_code == 200:
+                comps = res_c.json().get('advanced_computer_search', {}).get('computers', [])
+                for c in comps:
+                    self.target_ids.append({'id': c['id'], 'name': c.get('name'), 'type': 'computer'})
+                    c_count += 1
 
-                # 2. Check for Mobile Device Search (iOS/iPadOS/VisionOS)
-                url_mob = f"{self.base_url}/JSSResource/advancedmobiledevicesearches/name/{encoded_name}"
-                res_m = requests.get(url_mob, headers=headers)
-                if res_m.status_code == 200:
-                    mobs = res_m.json().get('advanced_mobile_device_search', {}).get('mobile_devices', [])
-                    for m in mobs:
-                        self.target_ids.append({'id': m['id'], 'name': m.get('name'), 'type': 'mobile'})
-                        m_count += 1
+            # Check Mobile
+            res_m = requests.get(f"{self.base_url}/JSSResource/advancedmobiledevicesearches/name/{encoded_name}", headers=headers)
+            if res_m.status_code == 200:
+                mobs = res_m.json().get('advanced_mobile_device_search', {}).get('mobile_devices', [])
+                for m in mobs:
+                    self.target_ids.append({'id': m['id'], 'name': m.get('name'), 'type': 'mobile'})
+                    m_count += 1
 
-                total = len(self.target_ids)
-                # Updated label to show the split
-                self.count_label.configure(
-                    text=f"Found: {total} ({c_count} Computer / {m_count} Mobile)", 
-                    text_color="#2ECC71"
-                )
-                self.dry_run_btn.configure(state="normal" if total > 0 else "disabled")
-                self.run_btn.configure(state="normal" if total > 0 else "disabled")
-                self.log(f"✅ Loaded '{search_name}': {c_count} Macs, {m_count} Mobile.")
-            
-            except Exception as e:
-                self.log(f"❌ Error: {str(e)}")
+            total = len(self.target_ids)
+            self.count_label.configure(text=f"Found: {total} ({c_count} Computer / {m_count} Mobile)", text_color="#2ECC71")
+            self.dry_run_btn.configure(state="normal" if total > 0 else "disabled")
+            self.unmanage_button.configure(state="normal" if total > 0 else "disabled")
+            self.remove_mdm_button.configure(state="normal" if total > 0 else "disabled")
+            self.log(f"✅ Loaded search: {total} devices found.")
+        except Exception as e: self.log(f"❌ Error: {str(e)}")
 
     def dry_run(self):
-            path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile=f"DryRun_{int(time.time())}.txt")
-            if not path: return
-        
-            # Split the list for the report
-            computers = [i for i in self.target_ids if i['type'] == 'computer']
-            mobiles = [i for i in self.target_ids if i['type'] == 'mobile']
+        path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile=f"DryRun_{int(time.time())}.txt")
+        if not path: return
+        with open(path, "w") as f:
+            f.write(f"DRY RUN: {len(self.target_ids)} devices found.\n")
+            for item in self.target_ids:
+                f.write(f"Type: {item['type']} | ID: {item['id']} | Name: {item['name']}\n")
+        self.log(f"💾 Dry Run saved to {path}")
 
-            with open(path, "w") as f:
-                f.write(f"--- DRY RUN REPORT: {self.search_entry.get()} ---\n")
-                f.write(f"Total Devices: {len(self.target_ids)}\n\n")
-            
-                f.write(f"=== COMPUTERS (macOS) [{len(computers)}] ===\n")
-                for item in computers:
-                    f.write(f"ID: {item['id']:<8} | Name: {item['name']}\n")
-            
-                f.write(f"\n=== MOBILE DEVICES (iOS/iPadOS/VisionOS) [{len(mobiles)}] ===\n")
-                for item in mobiles:
-                    f.write(f"ID: {item['id']:<8} | Name: {item['name']}\n")
-                
-                f.write(f"\n--- End of Report ---\n")
-            
-            self.log(f"💾 Organized Dry Run saved to {path}")
+    # --- Trigger Functions ---
+    def start_unmanage(self):
+        if messagebox.askyesno("Confirm", "Unmanage all found devices?"):
+            self.toggle_buttons("disabled")
+            threading.Thread(target=self.unmanage_worker, daemon=True).start()
 
-    def run_unmanage(self):
-        """UI Button Trigger: Starts the background thread."""
-        if not messagebox.askyesno("Confirm", f"Proceed with unmanaging {len(self.target_ids)} devices?"):
-            return
-        
-        self.run_btn.configure(state="disabled")
-        self.fetch_btn.configure(state="disabled")
-        self.login_btn.configure(state="disabled")
-        
-        # Start the worker thread
-        threading.Thread(target=self.unmanage_worker, daemon=True).start()
+    def start_removal(self):
+        if messagebox.askyesno("Confirm", "Send Remove MDM Profile command to all found devices?"):
+            self.toggle_buttons("disabled")
+            threading.Thread(target=self.mdm_removal_worker, daemon=True).start()
 
+    def toggle_buttons(self, state):
+        self.unmanage_button.configure(state=state)
+        self.remove_mdm_button.configure(state=state)
+        self.fetch_btn.configure(state=state)
+
+    # --- Worker Functions ---
     def unmanage_worker(self):
             results = []
             total = len(self.target_ids)
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Accept": "application/json"
+            }
         
             for i, item in enumerate(self.target_ids):
-                c_id = item['id']
-                # Determine endpoint based on device type
+                device_id = str(item['id'])
+            
+                # Select endpoint based on type
                 if item['type'] == 'computer':
-                    url = f"{self.base_url}/JSSResource/computers/id/{c_id}"
-                    payload = "<computer><general><remote_management><managed>false</managed></remote_management></general></computer>"
+                    url = f"{self.base_url}/api/v1/computers-inventory-detail/{device_id}/unmanage"
                 else:
-                    # Mobile devices (iOS/VisionOS) use a slightly different XML path
-                    url = f"{self.base_url}/JSSResource/mobiledevices/id/{c_id}"
-                    payload = "<mobile_device><general><managed>false</managed></general></mobile_device>"
-
-                headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/xml"}
+                    url = f"{self.base_url}/api/v2/mobile-devices/{device_id}/unmanage"
             
                 try:
-                    res = requests.put(url, headers=headers, data=payload)
-                    status = "SUCCESS" if res.status_code in [200, 201] else f"FAILED ({res.status_code})"
-                    results.append(f"{item['type'].upper()} ID: {c_id} Name: {item.get('name')} -> {status}")
-                    self.log(f"[{i+1}/{total}] {item['type'].upper()} {c_id}: {'✅' if 'SUCCESS' in status else '❌'}")
+                    res = requests.post(url, headers=headers)
+                
+                    # Jamf returns 204 (No Content) or 200/201 on successful Unmanage
+                    success = res.status_code in [200, 201, 202, 204]
+                
+                    self.log(f"[{i+1}/{total}] Unmanaging {item['type']} {device_id}: {'✅' if success else '❌'}")
+                    results.append(f"{item['name']} (ID:{device_id}): {'SUCCESS' if success else 'FAILED'}")
                 except Exception as e:
-                    results.append(f"ID: {c_id} -> Error: {str(e)}")
+                    self.log(f"Error {device_id}: {e}")
+                
+                time.sleep(0.3)
+                self.progress.set((i + 1) / total)
+            
+            self.after(0, lambda: self.finish_process(results))
+
+    def mdm_removal_worker(self):
+            results = []
+            total = len(self.target_ids)
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Accept": "application/json"
+            }
+        
+            for i, item in enumerate(self.target_ids):
+                try:
+                    device_id = str(item['id'])
+                    # The modern "Direct Action" endpoint (Jamf Pro 11+)
+                    if item['type'] == 'computer':
+                        url = f"{self.base_url}/api/v1/computer-inventory/{device_id}/remove-mdm-profile"
+                    else:
+                        # Mobile devices still often use the v1 mobile-device-inventory path
+                        url = f"{self.base_url}/api/v1/mobile-device-inventory/{device_id}/remove-mdm-profile"
+                
+                    # Note: This is a POST with NO payload
+                    res = requests.post(url, headers=headers)
+                
+                    # Jamf Pro 11 returns 201 (Created) or 202 (Accepted) for these actions
+                    success = res.status_code in [200, 201, 202]
+                
+                    if success:
+                        self.log(f"[{i+1}/{total}] Removing MDM {device_id}: ✅ (Action Triggered)")
+                    else:
+                        # If the specific inventory endpoint fails, it's usually because 
+                        # the device is marked 'Unremovable' in the PreStage.
+                        print(f"DEBUG: Action failed for {device_id}. Code: {res.status_code} | Resp: {res.text}")
+                        self.log(f"❌ ID {device_id} failed. HTTP {res.status_code}")
+                
+                    results.append(f"{item['name']} (ID:{device_id}): {'SUCCESS' if success else 'FAILED'}")
+
+                except Exception as e: 
+                    self.log(f"Error {item['id']}: {e}")
             
                 self.progress.set((i + 1) / total)
-                time.sleep(0.2) 
-
-            self.log("🏁 Batch process complete.")
+                time.sleep(0.3) # Avoid API rate-limiting during bulk removal
+            
             self.after(0, lambda: self.finish_process(results))
 
     def finish_process(self, results):
-        self.run_btn.configure(state="normal")
-        self.fetch_btn.configure(state="normal")
-        self.login_btn.configure(state="normal")
-        if messagebox.askyesno("Finished", "Process complete. Save a completion report?"):
+        self.toggle_buttons("normal")
+        messagebox.showinfo("Done", "Process complete.")
+        if messagebox.askyesno("Save Report", "Would you like to save the results report?"):
             self.save_report(results)
 
     def save_report(self, results):
-        path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile="Offboard_Report.txt")
+        path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile="Action_Report.txt")
         if path:
             with open(path, "w") as f:
                 f.write("\n".join(results))
