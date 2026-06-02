@@ -12,7 +12,7 @@ class JamfSearchUnmanager(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Jamf Pro: Offboard Utility")
-        self.geometry("600x650") # Slightly taller to fit new buttons
+        self.geometry("600x650") 
         
         self.base_url = ""
         self.token = ""
@@ -97,7 +97,7 @@ class JamfSearchUnmanager(ctk.CTk):
             return
         self.save_url(self.base_url)
         try:
-            res = requests.post(f"{self.base_url}/api/v1/auth/token", auth=(self.user_entry.get(), self.pass_entry.get()))
+            res = requests.post(f"{self.base_url}/api/v1/auth/token", auth=(self.user, self.pwd))
             if res.status_code == 200:
                 self.token = res.json()['token']
                 self.log("✅ Logged in successfully.")
@@ -105,52 +105,52 @@ class JamfSearchUnmanager(ctk.CTk):
         except Exception as e: self.log(f"❌ Connection Error: {str(e)}")
 
     def load_search(self):
-            search_name = self.search_entry.get().strip()
-            if not search_name or not self.token: 
-                self.log("❌ Error: Not logged in or no search name.")
-                return
-            headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
-            try:
-                encoded_name = requests.utils.quote(search_name)
-                self.target_ids = []
-                c_count = 0
-                m_count = 0
+        search_name = self.search_entry.get().strip()
+        if not search_name or not self.token: 
+            self.log("❌ Error: Not logged in or no search name.")
+            return
+        headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
+        try:
+            encoded_name = requests.utils.quote(search_name)
+            self.target_ids = []
+            c_count = 0
+            m_count = 0
             
-                # Check Computers
-                res_c = requests.get(f"{self.base_url}/JSSResource/advancedcomputersearches/name/{encoded_name}", headers=headers)
-                if res_c.status_code == 200:
-                    comps = res_c.json().get('advanced_computer_search', {}).get('computers', [])
-                    for c in comps:
-                        self.target_ids.append({'id': c['id'], 'name': c.get('name'), 'type': 'computer'})
-                        c_count += 1
+            # Check Computers
+            res_c = requests.get(f"{self.base_url}/JSSResource/advancedcomputersearches/name/{encoded_name}", headers=headers)
+            if res_c.status_code == 200:
+                comps = res_c.json().get('advanced_computer_search', {}).get('computers', [])
+                for c in comps:
+                    self.target_ids.append({'id': c['id'], 'name': c.get('name'), 'type': 'computer'})
+                    c_count += 1
 
-                # Check Mobile
-                res_m = requests.get(f"{self.base_url}/JSSResource/advancedmobiledevicesearches/name/{encoded_name}", headers=headers)
-                if res_m.status_code == 200:
-                    mobs = res_m.json().get('advanced_mobile_device_search', {}).get('mobile_devices', [])
-                    for m in mobs:
-                        self.target_ids.append({'id': m['id'], 'name': m.get('name'), 'type': 'mobile'})
-                        m_count += 1
+            # Check Mobile
+            res_m = requests.get(f"{self.base_url}/JSSResource/advancedmobiledevicesearches/name/{encoded_name}", headers=headers)
+            if res_m.status_code == 200:
+                mobs = res_m.json().get('advanced_mobile_device_search', {}).get('mobile_devices', [])
+                for m in mobs:
+                    self.target_ids.append({'id': m['id'], 'name': m.get('name'), 'type': 'mobile'})
+                    m_count += 1
 
-                total = len(self.target_ids)
-                self.count_label.configure(text=f"Found: {total} ({c_count} Computer / {m_count} Mobile)", text_color="#2ECC71")
-            
-                # --- Logic for Button States ---
-                has_mixed_types = (c_count > 0 and m_count > 0)
-            
-                self.dry_run_btn.configure(state="normal" if total > 0 else "disabled")
-                self.unmanage_button.configure(state="normal" if total > 0 else "disabled")
-            
-                if has_mixed_types:
-                    self.remove_mdm_button.configure(state="disabled", text="MIXED TYPES - REMOVAL BLOCKED")
-                    self.log("⚠️ Removal blocked: Search contains both Computers and Mobile devices.")
-                elif total > 0 and c_count > 0:
-                    self.remove_mdm_button.configure(state="normal", text="REMOVE MDM PROFILE")
-                else:
-                    self.remove_mdm_button.configure(state="disabled", text="REMOVE MDM PROFILE")
+            total = len(self.target_ids)
+            self.count_label.configure(text=f"Found: {total} ({c_count} Computer / {m_count} Mobile)", text_color="#2ECC71")
+        
+            # --- Logic for Button States ---
+            has_mixed_types = (c_count > 0 and m_count > 0)
+        
+            self.dry_run_btn.configure(state="normal" if total > 0 else "disabled")
+            self.unmanage_button.configure(state="normal" if total > 0 else "disabled")
+        
+            if has_mixed_types:
+                self.remove_mdm_button.configure(state="disabled", text="MIXED TYPES - REMOVAL BLOCKED")
+                self.log("⚠️ Removal blocked: Search contains both Computers and Mobile devices.")
+            elif total > 0 and c_count > 0:
+                self.remove_mdm_button.configure(state="normal", text="REMOVE MDM PROFILE")
+            else:
+                self.remove_mdm_button.configure(state="disabled", text="REMOVE MDM PROFILE")
 
-                self.log(f"✅ Loaded search: {total} devices found.")
-            except Exception as e: self.log(f"❌ Error: {str(e)}")
+            self.log(f"✅ Loaded search: {total} devices found.")
+        except Exception as e: self.log(f"❌ Error: {str(e)}")
 
     def dry_run(self):
         path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile=f"DryRun_{int(time.time())}.txt")
@@ -179,79 +179,89 @@ class JamfSearchUnmanager(ctk.CTk):
 
     # --- Worker Functions ---
     def unmanage_worker(self):
-            results = []
-            total = len(self.target_ids)
-            headers = {
-                "Authorization": f"Bearer {self.token}",
-                "Accept": "application/json"
-            }
+        results = []
+        total = len(self.target_ids)
         
-            for i, item in enumerate(self.target_ids):
-                device_id = str(item['id'])
+        # Headers for Classic API XML Put (Computers)
+        headers_xml = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/xml",
+            "Accept": "application/xml"
+        }
+        
+        # Headers for Modern API JSON (Mobile Devices)
+        headers_json = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/json"
+        }
+    
+        for i, item in enumerate(self.target_ids):
+            device_id = str(item['id'])
+            device_type = item['type']
             
-                # Select endpoint based on type
-                if item['type'] == 'computer':
-                    url = f"{self.base_url}/api/v1/computers-inventory-detail/{device_id}/unmanage"
+            try:
+                if device_type == 'computer':
+                    # Unticks "Allow Jamf Pro to perform management tasks" to free the license instantly
+                    url = f"{self.base_url}/JSSResource/computers/id/{device_id}"
+                    payload = "<computer><general><remote_management><managed>false</managed></remote_management></general></computer>"
+                    res = requests.put(url, headers=headers_xml, data=payload)
+                else:
+                    url = f"{self.base_url}/api/v2/mobile-devices/{device_id}/unmanage"
+                    res = requests.post(url, headers=headers_json)
+                
+                success = res.status_code in [200, 201, 202]
+                
+                if success:
+                    self.log(f"[{i+1}/{total}] Unmanaging {device_type} {device_id}: ✅")
+                    results.append(f"{item['name']} (ID:{device_id}): SUCCESS")
+                else:
+                    self.log(f"[{i+1}/{total}] Unmanaging {device_type} {device_id}: ❌ (HTTP {res.status_code})")
+                    results.append(f"{item['name']} (ID:{device_id}): FAILED (HTTP {res.status_code})")
+                    
+            except Exception as e:
+                self.log(f"Error {device_id}: {e}")
+                results.append(f"{item['name']} (ID:{device_id}): FAILED (Exception)")
+            
+            self.progress.set((i + 1) / total)
+            time.sleep(0.3) 
+            
+        self.after(0, lambda: self.finish_process(results))
+
+    def mdm_removal_worker(self):
+        results = []
+        total = len(self.target_ids)
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/json"
+        }
+    
+        for i, item in enumerate(self.target_ids):
+            device_id = str(item['id'])
+            device_type = item['type']
+            try:
+                if device_type == 'computer':
+                    url = f"{self.base_url}/api/v1/computer-inventory/{device_id}/remove-mdm-profile"
                 else:
                     url = f"{self.base_url}/api/v2/mobile-devices/{device_id}/unmanage"
             
-                try:
-                    res = requests.post(url, headers=headers)
-                
-                    # Jamf returns 204 (No Content) or 200/201 on successful Unmanage
-                    success = res.status_code in [200, 201, 202, 204]
-                
-                    self.log(f"[{i+1}/{total}] Unmanaging {item['type']} {device_id}: {'✅' if success else '❌'}")
-                    results.append(f"{item['name']} (ID:{device_id}): {'SUCCESS' if success else 'FAILED'}")
-                except Exception as e:
-                    self.log(f"Error {device_id}: {e}")
-                
-                time.sleep(0.3)
-                self.progress.set((i + 1) / total)
+                res = requests.post(url, headers=headers)
+                success = res.status_code in [200, 201, 202]
             
-            self.after(0, lambda: self.finish_process(results))
+                if success:
+                    self.log(f"[{i+1}/{total}] Removing MDM {device_id}: ✅")
+                    results.append(f"{item['name']} (ID:{device_id}): SUCCESS")
+                else:
+                    self.log(f"[{i+1}/{total}] Removing MDM {device_id}: ❌ (HTTP {res.status_code})")
+                    results.append(f"{item['name']} (ID:{device_id}): FAILED ({res.status_code})")
 
-    def mdm_removal_worker(self):
-            results = []
-            total = len(self.target_ids)
-            headers = {
-                "Authorization": f"Bearer {self.token}",
-                "Accept": "application/json"
-            }
+            except Exception as e: 
+                self.log(f"Error {item['id']}: {e}")
+                results.append(f"{item['name']} (ID:{device_id}): FAILED (Exception)")
         
-            for i, item in enumerate(self.target_ids):
-                try:
-                    device_id = str(item['id'])
-                    # The modern "Direct Action" endpoint (Jamf Pro 11+)
-                    if item['type'] == 'computer':
-                        url = f"{self.base_url}/api/v1/computer-inventory/{device_id}/remove-mdm-profile"
-                    else:
-                        # Mobile devices still often use the v1 mobile-device-inventory path
-                        url = f"{self.base_url}/api/v1/mobile-device-inventory/{device_id}/remove-mdm-profile"
-                
-                    # Note: This is a POST with NO payload
-                    res = requests.post(url, headers=headers)
-                
-                    # Jamf Pro 11 returns 201 (Created) or 202 (Accepted) for these actions
-                    success = res.status_code in [200, 201, 202]
-                
-                    if success:
-                        self.log(f"[{i+1}/{total}] Removing MDM {device_id}: ✅ (Action Triggered)")
-                    else:
-                        # If the specific inventory endpoint fails, it's usually because 
-                        # the device is marked 'Unremovable' in the PreStage.
-                        print(f"DEBUG: Action failed for {device_id}. Code: {res.status_code} | Resp: {res.text}")
-                        self.log(f"❌ ID {device_id} failed. HTTP {res.status_code}")
-                
-                    results.append(f"{item['name']} (ID:{device_id}): {'SUCCESS' if success else 'FAILED'}")
-
-                except Exception as e: 
-                    self.log(f"Error {item['id']}: {e}")
-            
-                self.progress.set((i + 1) / total)
-                time.sleep(0.3) # Avoid API rate-limiting during bulk removal
-            
-            self.after(0, lambda: self.finish_process(results))
+            self.progress.set((i + 1) / total)
+            time.sleep(0.3) 
+        
+        self.after(0, lambda: self.finish_process(results))
 
     def finish_process(self, results):
         self.toggle_buttons("normal")
